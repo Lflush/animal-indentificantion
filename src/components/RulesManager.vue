@@ -26,7 +26,7 @@
     <form @submit.prevent="addRule">
       <div>
         <label>条件:</label>
-        <input type="text" v-model="newRule.conditions" placeholder="用逗号分隔">
+        <input type="text" v-model="newRuleConditions" placeholder="用逗号分隔">
       </div>
       <div>
         <label>结论:</label>
@@ -38,25 +38,50 @@
       </div>
       <button type="submit">添加</button>
     </form>
+
+    <!-- 编辑表单 -->
+    <div v-if="editingRule" class="edit-form">
+      <h3>编辑规则</h3>
+      <form @submit.prevent="updateRule">
+        <div>
+          <label>条件:</label>
+          <input type="text" v-model="editingRuleConditions" placeholder="用逗号分隔">
+        </div>
+        <div>
+          <label>结论:</label>
+          <input type="text" v-model="editingRule.conclusion">
+        </div>
+        <div>
+          <label>优先级:</label>
+          <input type="number" v-model="editingRule.priority">
+        </div>
+        <button type="submit">保存</button>
+        <button @click="cancelEdit">取消</button>
+      </form>
+    </div>
   </div>
 </template>
 
 <script>
+import axios from '@/plugins/axios';
 export default {
   data() {
     return {
       rules: [],
       newRule: {
-        conditions: '',
+        conditions: [],
         conclusion: '',
         priority: 1
-      }
+      },
+      newRuleConditions: '',
+      editingRule: null,
+      editingRuleConditions: '',
     };
   },
   methods: {
     async fetchRules() {
       try {
-        const response = await this.$axios.get('/api/inference/rules');
+        const response = await axios.get('http://localhost:9000/api/inference/rules/all');
         this.rules = response.data.map((rule, index) => ({ ...rule, id: index }));
       } catch (error) {
         console.error(error);
@@ -64,20 +89,63 @@ export default {
     },
     async addRule() {
       try {
-        const response = await this.$axios.post('/api/inference/rules', this.newRule);
-        this.rules.push({ ...this.newRule, id: this.rules.length });
+        // 将条件字符串转换为数组
+        const conditionsArray = this.newRuleConditions.split(',').map(condition => condition.trim());
+
+        // 创建一个新的规则对象
+        const newRule = {
+          conditions: conditionsArray,
+          conclusion: this.newRule.conclusion,
+          priority: this.newRule.priority
+        };
+
+        const response = await axios.post('http://localhost:9000/api/inference/rules/add', newRule);
+        this.rules.push({ ...newRule, id: this.rules.length });
         this.newRule = { conditions: '', conclusion: '', priority: 1 };
+        // 刷新规则列表以确保数据一致性
+        this.fetchRules();
       } catch (error) {
         console.error(error);
       }
     },
     async editRule(rule) {
-      // 实现编辑规则的逻辑
+      this.editingRule = { ...rule }; // 深拷贝规则对象
+      this.editingRuleConditions = rule.conditions.join(', ');
+    },
+    async updateRule() {
+      try {
+        const conditionsArray = this.editingRuleConditions.split(',').map(condition => condition.trim());
+        const newRule = {
+          conditions: conditionsArray,
+          conclusion: this.editingRule.conclusion,
+          priority: this.editingRule.priority
+        };
+
+        // 先删除旧规则
+        await axios.post('http://localhost:9000/api/inference/rules/delete', this.editingRule);
+
+        const response = await axios.post('http://localhost:9000/api/inference/rules/add', newRule);
+        this.rules.push({ ...newRule, id: this.editingRule.id });
+
+        this.editingRule = null;
+        this.editingRuleConditions = '';
+        alert('更新成功');
+        this.fetchRules();
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    cancelEdit() {
+      this.editingRule = null;
+      this.editingRuleConditions = '';
     },
     async deleteRule(rule) {
       try {
-        await this.$axios.delete('/api/inference/rules', { data: rule });
+        await axios.post('http://localhost:9000/api/inference/rules/delete', rule);
         this.rules = this.rules.filter(r => r.id !== rule.id);
+        alert('删除成功');
+        // 刷新规则列表以确保数据一致性
+        this.fetchRules();
       } catch (error) {
         console.error(error);
       }
